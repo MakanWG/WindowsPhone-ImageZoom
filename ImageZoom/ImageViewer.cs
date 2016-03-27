@@ -33,7 +33,7 @@ namespace ImageZoom
 			DependencyProperty.Register("Image", typeof(ImageSource), typeof(ImageViewer), null);
 
 		private Grid Root;
-		private ScrollViewer ScrollViewer;
+		private Image ImageControl;
 
 
 
@@ -49,27 +49,39 @@ namespace ImageZoom
 
 
 
+
+
+		public double MaxZoomFactor
+		{
+			get { return (double)GetValue(MaxZoomFactorProperty); }
+			set { SetValue(MaxZoomFactorProperty, value); }
+		}
+
+		// Using a DependencyProperty as the backing store for MaxZoomFactor.  This enables animation, styling, binding, etc...
+		public static readonly DependencyProperty MaxZoomFactorProperty =
+			DependencyProperty.Register("MaxZoomFactor", typeof(double), typeof(ImageViewer), new PropertyMetadata(10.0));
+
+
+
+		public double MinZoomFactor
+		{
+			get { return (double)GetValue(MinZoomFactorProperty); }
+			set { SetValue(MinZoomFactorProperty, value); }
+		}
+
+		// Using a DependencyProperty as the backing store for MinZoomFactor.  This enables animation, styling, binding, etc...
+		public static readonly DependencyProperty MinZoomFactorProperty =
+			DependencyProperty.Register("MinZoomFactor", typeof(double), typeof(ImageViewer), new PropertyMetadata(1.0));
+
+
+
+
+
+
 		protected override void OnApplyTemplate()
 		{
 			Root = GetTemplateChild("Root") as Grid;
-			ScrollViewer = GetTemplateChild("ScrollViewer") as ScrollViewer;
-			//ScrollViewer.Unloaded += (s, e) =>
-			//{
-			//	ScrollViewer.ChangeView(0, 0, 1);
-			//};
-			//this.DoubleTapped += async (s, e) =>
-			//{
-			//	await Task.Delay(1);
-			//	if (ScrollViewer.ZoomFactor == 2)
-			//	{
-			//		ScrollViewer.ChangeView(e.GetPosition(this).X, e.GetPosition(this).Y, 1);
-			//	}
-			//	else
-			//	{
-			//		ScrollViewer.ChangeView(e.GetPosition(this).X, e.GetPosition(this).Y, 2);
-			//	}
-
-			//};
+			ImageControl = GetTemplateChild("Image") as Image;
 			if (Root != null)
 			{
 				Root.ManipulationDelta += Root_ManipulationDelta;
@@ -85,7 +97,6 @@ namespace ImageZoom
 		private async void Root_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
 		{
 			e.Handled = true;
-			await Task.Delay(10);
 			isscaling = false;
 
 		}
@@ -118,44 +129,46 @@ namespace ImageZoom
 				//Current scale factor
 				double scale = uniformScale / lastUniformScale;
 
-				if (scale > 0 && scale != 1 && transform.ScaleX <= 4 && transform.ScaleX >= 1)
-				{
-					//Apply scaling
-					transform.ScaleY = transform.ScaleX *= scale;
-					//Update the offset caused by this scaling
-					var ul = Root.TransformToVisual(this).TransformPoint(new Point());
-					transform.TranslateX = origin.X - (origin.X - ul.X) * scale;
-					transform.TranslateY = origin.Y - (origin.Y - ul.Y) * scale;
-				}
-				else if (scale > 0 && scale != 1 && transform.ScaleX >= 4 && scale < 1)
-				{
-					//Apply scaling
-					transform.ScaleY = transform.ScaleX *= scale;
-					//Update the offset caused by this scaling
-					var ul = Root.TransformToVisual(this).TransformPoint(new Point());
-					transform.TranslateX = origin.X - (origin.X - ul.X) * scale;
-					transform.TranslateY = origin.Y - (origin.Y - ul.Y) * scale;
-				}
-				else if (scale > 0 && scale != 1 && transform.ScaleX <= 1 && scale > 1)
-				{
-					//Apply scaling
-					transform.ScaleY = transform.ScaleX *= scale;
-					//Update the offset caused by this scaling
-					var ul = Root.TransformToVisual(this).TransformPoint(new Point());
-					transform.TranslateX = origin.X - (origin.X - ul.X) * scale;
-					transform.TranslateY = origin.Y - (origin.Y - ul.Y) * scale;
-				}
-				if (scale > 0 && scale != 1)
+				if (scale > 0 && scale != 1) //scaling
 				{
 					isscaling = true;
-				}
-				if (!isscaling)
-				{
-					//Apply translate caused by drag
-					transform.TranslateX += (origin.X - lastOrigin.Value.X);
-					transform.TranslateY += (origin.Y - lastOrigin.Value.Y);
+					if ((transform.ScaleX > MinZoomFactor && transform.ScaleX < MaxZoomFactor) ||
+						(transform.ScaleX >= MaxZoomFactor && scale < 1) ||
+						(transform.ScaleX <= MinZoomFactor && scale > 1))
+					{
+						//Apply scaling
+						transform.ScaleY = transform.ScaleX *= scale;
+						//Update the offset caused by this scaling
+						var ul = Root.TransformToVisual(this).TransformPoint(new Point());
+						transform.TranslateX = origin.X - (origin.X - ul.X) * scale;
+						transform.TranslateY = origin.Y - (origin.Y - ul.Y) * scale;
+					}
 				}
 
+				var imageWidth = ImageControl.ActualWidth * transform.ScaleX;
+				var imageHeight = ImageControl.ActualHeight * transform.ScaleY;
+				var translateX = (origin.X - lastOrigin.Value.X);
+				var translateY = (origin.Y - lastOrigin.Value.Y);
+				var imageOffsetPoint = ImageControl.TransformToVisual(Root).TransformPoint(new Point(0, 0));
+				if (!isscaling && transform.ScaleX > 1)//translating
+				{
+					if (imageWidth > Root.ActualWidth) // image is larger than width, translate horizontally
+					{
+						if ((translateX > 0 && transform.TranslateX <= 0) || 
+							(translateX < 0 && transform.TranslateX + imageWidth >= ImageControl.ActualWidth))
+						{
+							transform.TranslateX += (origin.X - lastOrigin.Value.X);
+						}
+					}
+					if (imageHeight > Root.ActualHeight) // image is bigger than height, translate vertically
+					{
+						if ((translateY > 0 && transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) <= 0)||
+							(translateY < 0 && transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) >= Root.ActualHeight))
+						{
+							transform.TranslateY += (origin.Y - lastOrigin.Value.Y);
+						}
+					}
+				}
 
 				//Cache values for next time
 				lastOrigin = origin;
