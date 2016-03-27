@@ -7,13 +7,18 @@
       mc:Ignorable="d"
       Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
 
-    <Grid>
+    <Grid x:Name="grid"
+          RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <CompositeTransform />
+        </Grid.RenderTransform>
         <FlipView>
             <FlipViewItem>
                 <Image Source="http://i.imgur.com/o7VHqmB.jpg" />
             </FlipViewItem>
             <FlipViewItem>
-                <local:ImageViewer Image="http://i.imgur.com/o7VHqmB.jpg" MaxZoomFactor="4" />
+                <local:ImageViewer Image="http://i.imgur.com/o7VHqmB.jpg"
+                                   MaxZoomFactor="4" />
             </FlipViewItem>
         </FlipView>
     </Grid>

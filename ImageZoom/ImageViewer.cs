@@ -11,6 +11,7 @@ using Windows.UI.Xaml.Data;
 using Windows.UI.Xaml.Documents;
 using Windows.UI.Xaml.Input;
 using Windows.UI.Xaml.Media;
+using Windows.UI.Xaml.Media.Animation;
 
 // The Templated Control item template is documented at http://go.microsoft.com/fwlink/?LinkId=234235
 
@@ -18,6 +19,10 @@ namespace ImageZoom
 {
 	public sealed class ImageViewer : Control
 	{
+		private Grid Root;
+		private Image ImageControl;
+		private LastMoveType _lastMoveType;
+
 		public ImageViewer()
 		{
 			this.DefaultStyleKey = typeof(ImageViewer);
@@ -31,11 +36,6 @@ namespace ImageZoom
 
 		public static readonly DependencyProperty ImageProperty =
 			DependencyProperty.Register("Image", typeof(ImageSource), typeof(ImageViewer), null);
-
-		private Grid Root;
-		private Image ImageControl;
-
-
 
 		public double AppWidth
 		{
@@ -92,13 +92,91 @@ namespace ImageZoom
 			base.OnApplyTemplate();
 		}
 
-		private bool isscaling;
+		private bool isScaling;
 
-		private async void Root_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
+		private void Root_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
 		{
 			e.Handled = true;
-			isscaling = false;
+			isScaling = false;
+			var transform = Root.RenderTransform as CompositeTransform;
+			var imageWidth = ImageControl.ActualWidth * transform.ScaleX;
+			var imageHeight = ImageControl.ActualHeight * transform.ScaleY;
+			var imageOffsetPoint = ImageControl.TransformToVisual(Root).TransformPoint(new Point(0, 0));
+			if (transform.ScaleX < MinZoomFactor)
+			{
+				ResetScale();
+			}
+			if (transform.TranslateX >= 0 || transform.TranslateX + imageWidth <= ImageControl.ActualWidth)
+			{
+				ResetHorizontal(transform, imageWidth);
+			}
+			if (transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) >= 0 || transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) <= Root.ActualHeight)
+			{
+				ResetVertical(transform, imageHeight, imageOffsetPoint);
+			}
+		}
 
+		private void ResetScale()
+		{
+			var storyboard = new Storyboard();
+			var doubleAnimationX = new DoubleAnimation() { To = MinZoomFactor, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
+			var doubleAnimationY = new DoubleAnimation() { To = MinZoomFactor, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
+			Storyboard.SetTarget(doubleAnimationY, Root);
+			Storyboard.SetTargetProperty(doubleAnimationY, "(UIElement.RenderTransform).(CompositeTransform.ScaleY)");
+			storyboard.Children.Add((doubleAnimationY));
+			Storyboard.SetTarget(doubleAnimationX, Root);
+			Storyboard.SetTargetProperty(doubleAnimationX, "(UIElement.RenderTransform).(CompositeTransform.ScaleX)");
+			storyboard.Children.Add((doubleAnimationX));
+			storyboard.Begin();
+		}
+
+		private void ResetHorizontal(CompositeTransform transform, double imageWidth)
+		{
+			double? resetTo = null;
+			if (transform.TranslateX >= 0)
+			{
+				resetTo = 0.0;
+			}
+			else
+			{
+				resetTo = ImageControl.ActualWidth - imageWidth;
+			}
+			var storyboard = new Storyboard();
+			var doubleAnimation = new DoubleAnimation() { To = resetTo, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
+			Storyboard.SetTarget(doubleAnimation, Root);
+			Storyboard.SetTargetProperty(doubleAnimation, "(UIElement.RenderTransform).(CompositeTransform.TranslateX)");
+			storyboard.Children.Add((doubleAnimation));
+			storyboard.Begin();
+		}
+
+		private void ResetVertical(CompositeTransform transform, double imageHeight, Point imageOffsetPoint)
+		{
+			double? resetTo = null;
+			if (imageHeight > Root.ActualHeight)
+			{
+				if (transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) <= 0)
+				{
+
+					resetTo = Root.ActualHeight - imageHeight - (imageOffsetPoint.Y * transform.ScaleY);
+				}
+				else
+				{
+					resetTo = -(imageOffsetPoint.Y * transform.ScaleY);
+				}
+			}
+			else
+			{
+				return;
+
+			}
+
+
+			var storyboard = new Storyboard();
+			var doubleAnimation = new DoubleAnimation() { To = resetTo, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
+			Storyboard.SetTarget(doubleAnimation, Root);
+			Storyboard.SetTargetProperty(doubleAnimation, "(UIElement.RenderTransform).(CompositeTransform.TranslateY)");
+			storyboard.Children.Add((doubleAnimation));
+			storyboard.Begin();
 		}
 
 		private Point? lastOrigin;
@@ -131,7 +209,7 @@ namespace ImageZoom
 
 				if (scale > 0 && scale != 1) //scaling
 				{
-					isscaling = true;
+					isScaling = true;
 					if ((transform.ScaleX > MinZoomFactor && transform.ScaleX < MaxZoomFactor) ||
 						(transform.ScaleX >= MaxZoomFactor && scale < 1) ||
 						(transform.ScaleX <= MinZoomFactor && scale > 1))
@@ -143,6 +221,7 @@ namespace ImageZoom
 						transform.TranslateX = origin.X - (origin.X - ul.X) * scale;
 						transform.TranslateY = origin.Y - (origin.Y - ul.Y) * scale;
 					}
+					_lastMoveType = LastMoveType.Scale;
 				}
 
 				var imageWidth = ImageControl.ActualWidth * transform.ScaleX;
@@ -150,11 +229,11 @@ namespace ImageZoom
 				var translateX = (origin.X - lastOrigin.Value.X);
 				var translateY = (origin.Y - lastOrigin.Value.Y);
 				var imageOffsetPoint = ImageControl.TransformToVisual(Root).TransformPoint(new Point(0, 0));
-				if (!isscaling && transform.ScaleX > 1)//translating
+				if (!isScaling && transform.ScaleX > 1)//translating
 				{
 					if (imageWidth > Root.ActualWidth) // image is larger than width, translate horizontally
 					{
-						if ((translateX > 0 && transform.TranslateX <= 0) || 
+						if ((translateX > 0 && transform.TranslateX <= 0) ||
 							(translateX < 0 && transform.TranslateX + imageWidth >= ImageControl.ActualWidth))
 						{
 							transform.TranslateX += (origin.X - lastOrigin.Value.X);
@@ -162,20 +241,24 @@ namespace ImageZoom
 					}
 					if (imageHeight > Root.ActualHeight) // image is bigger than height, translate vertically
 					{
-						if ((translateY > 0 && transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) <= 0)||
+						if ((translateY > 0 && transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) <= 0) ||
 							(translateY < 0 && transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) >= Root.ActualHeight))
 						{
 							transform.TranslateY += (origin.Y - lastOrigin.Value.Y);
 						}
 					}
+					_lastMoveType = LastMoveType.Translate;
 				}
 
 				//Cache values for next time
 				lastOrigin = origin;
 				lastUniformScale = uniformScale;
 			}
-
-
 		}
+	}
+
+	public enum LastMoveType
+	{
+		Scale, Translate
 	}
 }
