@@ -12,6 +12,7 @@
                     <Grid x:Name="Root"
                           Background="Transparent"
                           ManipulationMode="Scale,TranslateX,TranslateY">
+                        <Grid x:Name="RootGhost"></Grid>
                         <Image x:Name="Image"
                                Source="{TemplateBinding Image}"
                                Stretch="Uniform"

@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading.Tasks;
 using Windows.Foundation;
+using Windows.Security.Cryptography.Core;
 using Windows.UI.ViewManagement;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
@@ -19,9 +21,8 @@ namespace ImageZoom
 {
 	public sealed class ImageViewer : Control
 	{
-		private Grid Root;
-		private Image ImageControl;
-		private LastMoveType _lastMoveType;
+		private Grid _root;
+		private Image _imageControl;
 
 		public ImageViewer()
 		{
@@ -47,10 +48,6 @@ namespace ImageZoom
 		public static readonly DependencyProperty AppWidthProperty =
 			DependencyProperty.Register("AppWidth", typeof(double), typeof(ImageViewer), new PropertyMetadata(ApplicationView.GetForCurrentView().VisibleBounds.Width));
 
-
-
-
-
 		public double MaxZoomFactor
 		{
 			get { return (double)GetValue(MaxZoomFactorProperty); }
@@ -74,46 +71,56 @@ namespace ImageZoom
 			DependencyProperty.Register("MinZoomFactor", typeof(double), typeof(ImageViewer), new PropertyMetadata(1.0));
 
 
-
-
-
-
 		protected override void OnApplyTemplate()
 		{
-			Root = GetTemplateChild("Root") as Grid;
-			ImageControl = GetTemplateChild("Image") as Image;
-			if (Root != null)
+			_root = GetTemplateChild("Root") as Grid;
+			_imageControl = GetTemplateChild("Image") as Image;
+			if (_root != null)
 			{
-				Root.ManipulationDelta += Root_ManipulationDelta;
-				Root.ManipulationStarted += Root_ManipulationStarted;
-				Root.ManipulationCompleted += Root_ManipulationCompleted;
-				Root.RenderTransform = new CompositeTransform();
+				_root.ManipulationDelta += Root_ManipulationDelta;
+				_root.ManipulationStarted += Root_ManipulationStarted;
+				_root.ManipulationCompleted += Root_ManipulationCompleted;
+				_root.DoubleTapped += Root_DoubleTapped;
+				_root.RenderTransform = new CompositeTransform();
 			}
 			base.OnApplyTemplate();
 		}
 
-		private bool isScaling;
+		private void Root_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+		{
+			HandleDoubleTap(e.GetPosition(_root));
+		}
+
+		private bool _isScaling;
+
+
 
 		private void Root_ManipulationCompleted(object sender, ManipulationCompletedRoutedEventArgs e)
 		{
 			e.Handled = true;
-			isScaling = false;
-			var transform = Root.RenderTransform as CompositeTransform;
-			var imageWidth = ImageControl.ActualWidth * transform.ScaleX;
-			var imageHeight = ImageControl.ActualHeight * transform.ScaleY;
-			var imageOffsetPoint = ImageControl.TransformToVisual(Root).TransformPoint(new Point(0, 0));
+			_isScaling = false;
+			ResetPosition();
+		}
+
+		private void ResetPosition()
+		{
+			var transform = _root.RenderTransform as CompositeTransform;
+			var imageWidth = _imageControl.ActualWidth * transform.ScaleX;
+			var imageHeight = _imageControl.ActualHeight * transform.ScaleY;
+			var imageOffsetPoint = _imageControl.TransformToVisual(_root).TransformPoint(new Point(0, 0));
 			if (transform.ScaleX < MinZoomFactor)
 			{
 				ResetScale();
 			}
-			if (transform.TranslateX >= 0 || transform.TranslateX + imageWidth <= ImageControl.ActualWidth)
+			if (transform.TranslateX >= 0 || transform.TranslateX + imageWidth <= _imageControl.ActualWidth)
 			{
 				ResetHorizontal(transform, imageWidth);
 			}
-			if (transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) >= 0 || transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) <= Root.ActualHeight)
+			if (transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) >= 0 || transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) <= _root.ActualHeight)
 			{
 				ResetVertical(transform, imageHeight, imageOffsetPoint);
 			}
+			isZoomed = transform.ScaleX >= 1.005;
 		}
 
 		private void ResetScale()
@@ -121,10 +128,10 @@ namespace ImageZoom
 			var storyboard = new Storyboard();
 			var doubleAnimationX = new DoubleAnimation() { To = MinZoomFactor, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
 			var doubleAnimationY = new DoubleAnimation() { To = MinZoomFactor, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
-			Storyboard.SetTarget(doubleAnimationY, Root);
+			Storyboard.SetTarget(doubleAnimationY, _root);
 			Storyboard.SetTargetProperty(doubleAnimationY, "(UIElement.RenderTransform).(CompositeTransform.ScaleY)");
 			storyboard.Children.Add((doubleAnimationY));
-			Storyboard.SetTarget(doubleAnimationX, Root);
+			Storyboard.SetTarget(doubleAnimationX, _root);
 			Storyboard.SetTargetProperty(doubleAnimationX, "(UIElement.RenderTransform).(CompositeTransform.ScaleX)");
 			storyboard.Children.Add((doubleAnimationX));
 			storyboard.Begin();
@@ -139,11 +146,11 @@ namespace ImageZoom
 			}
 			else
 			{
-				resetTo = ImageControl.ActualWidth - imageWidth;
+				resetTo = _imageControl.ActualWidth - imageWidth;
 			}
 			var storyboard = new Storyboard();
 			var doubleAnimation = new DoubleAnimation() { To = resetTo, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
-			Storyboard.SetTarget(doubleAnimation, Root);
+			Storyboard.SetTarget(doubleAnimation, _root);
 			Storyboard.SetTargetProperty(doubleAnimation, "(UIElement.RenderTransform).(CompositeTransform.TranslateX)");
 			storyboard.Children.Add((doubleAnimation));
 			storyboard.Begin();
@@ -152,12 +159,12 @@ namespace ImageZoom
 		private void ResetVertical(CompositeTransform transform, double imageHeight, Point imageOffsetPoint)
 		{
 			double? resetTo = null;
-			if (imageHeight > Root.ActualHeight)
+			if (imageHeight > _root.ActualHeight)
 			{
 				if (transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) <= 0)
 				{
 
-					resetTo = Root.ActualHeight - imageHeight - (imageOffsetPoint.Y * transform.ScaleY);
+					resetTo = _root.ActualHeight - imageHeight - (imageOffsetPoint.Y * transform.ScaleY);
 				}
 				else
 				{
@@ -173,7 +180,7 @@ namespace ImageZoom
 
 			var storyboard = new Storyboard();
 			var doubleAnimation = new DoubleAnimation() { To = resetTo, Duration = new Duration(TimeSpan.FromMilliseconds(200)) };
-			Storyboard.SetTarget(doubleAnimation, Root);
+			Storyboard.SetTarget(doubleAnimation, _root);
 			Storyboard.SetTargetProperty(doubleAnimation, "(UIElement.RenderTransform).(CompositeTransform.TranslateY)");
 			storyboard.Children.Add((doubleAnimation));
 			storyboard.Begin();
@@ -190,7 +197,7 @@ namespace ImageZoom
 
 		private void Root_ManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
 		{
-			var transform = Root.RenderTransform as CompositeTransform;
+			var transform = _root.RenderTransform as CompositeTransform;
 			if (transform != null)
 			{
 				var origin = e.Container.TransformToVisual(this).TransformPoint(e.Position);
@@ -209,7 +216,7 @@ namespace ImageZoom
 
 				if (scale > 0 && scale != 1) //scaling
 				{
-					isScaling = true;
+					_isScaling = true;
 					if ((transform.ScaleX > MinZoomFactor && transform.ScaleX < MaxZoomFactor) ||
 						(transform.ScaleX >= MaxZoomFactor && scale < 1) ||
 						(transform.ScaleX <= MinZoomFactor && scale > 1))
@@ -217,37 +224,35 @@ namespace ImageZoom
 						//Apply scaling
 						transform.ScaleY = transform.ScaleX *= scale;
 						//Update the offset caused by this scaling
-						var ul = Root.TransformToVisual(this).TransformPoint(new Point());
+						var ul = _root.TransformToVisual(this).TransformPoint(new Point());
 						transform.TranslateX = origin.X - (origin.X - ul.X) * scale;
 						transform.TranslateY = origin.Y - (origin.Y - ul.Y) * scale;
 					}
-					_lastMoveType = LastMoveType.Scale;
 				}
 
-				var imageWidth = ImageControl.ActualWidth * transform.ScaleX;
-				var imageHeight = ImageControl.ActualHeight * transform.ScaleY;
+				var imageWidth = _imageControl.ActualWidth * transform.ScaleX;
+				var imageHeight = _imageControl.ActualHeight * transform.ScaleY;
 				var translateX = (origin.X - lastOrigin.Value.X);
 				var translateY = (origin.Y - lastOrigin.Value.Y);
-				var imageOffsetPoint = ImageControl.TransformToVisual(Root).TransformPoint(new Point(0, 0));
-				if (!isScaling && transform.ScaleX > 1)//translating
+				var imageOffsetPoint = _imageControl.TransformToVisual(_root).TransformPoint(new Point(0, 0));
+				if (!_isScaling && transform.ScaleX > 1)//translating
 				{
-					if (imageWidth > Root.ActualWidth) // image is larger than width, translate horizontally
+					if (imageWidth > _root.ActualWidth) // image is larger than width, translate horizontally
 					{
 						if ((translateX > 0 && transform.TranslateX <= 0) ||
-							(translateX < 0 && transform.TranslateX + imageWidth >= ImageControl.ActualWidth))
+							(translateX < 0 && transform.TranslateX + imageWidth >= _imageControl.ActualWidth))
 						{
 							transform.TranslateX += (origin.X - lastOrigin.Value.X);
 						}
 					}
-					if (imageHeight > Root.ActualHeight) // image is bigger than height, translate vertically
+					if (imageHeight > _root.ActualHeight) // image is bigger than height, translate vertically
 					{
 						if ((translateY > 0 && transform.TranslateY + (imageOffsetPoint.Y * transform.ScaleY) <= 0) ||
-							(translateY < 0 && transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) >= Root.ActualHeight))
+							(translateY < 0 && transform.TranslateY + imageHeight + (imageOffsetPoint.Y * transform.ScaleY) >= _root.ActualHeight))
 						{
 							transform.TranslateY += (origin.Y - lastOrigin.Value.Y);
 						}
 					}
-					_lastMoveType = LastMoveType.Translate;
 				}
 
 				//Cache values for next time
@@ -255,10 +260,68 @@ namespace ImageZoom
 				lastUniformScale = uniformScale;
 			}
 		}
-	}
 
-	public enum LastMoveType
-	{
-		Scale, Translate
+		private bool isZoomed;
+
+		private void HandleDoubleTap(Point point)
+		{
+			if (isZoomed)
+			{
+				ZoomToNegativeScale(1, point);
+			}
+			else
+			{
+				ZoomToPositiveScale(2.0, point);
+			}
+		}
+
+		private async Task ZoomToPositiveScale(double targetZoom, Point origin)
+		{
+			lastUniformScale = Math.Sqrt(2);
+			lastOrigin = null;
+			var initialZoom = (_root.RenderTransform as CompositeTransform).ScaleX;
+			var step = (targetZoom) / 20;
+			for (double i = initialZoom; i <= targetZoom; i += step)
+			{
+				await PerformZoom(origin, i);
+			}
+
+			ResetPosition();
+		}
+
+		private async Task ZoomToNegativeScale(double targetZoom, Point origin)
+		{
+			lastUniformScale = Math.Sqrt(2);
+			lastOrigin = null;
+			var initialZoom = (_root.RenderTransform as CompositeTransform).ScaleX;
+			var step = (targetZoom/initialZoom) / 10;
+			for (double i = 1; i >= (targetZoom / initialZoom); i -= step)
+			{
+				await PerformZoom(origin, i);
+			}
+
+			ResetPosition();
+		}
+
+		private async Task PerformZoom(Point origin, double zoomStep)
+		{
+			await Task.Delay(10);
+			double uniformScale = Math.Sqrt(Math.Pow(zoomStep, 2) +
+			                                Math.Pow(zoomStep, 2));
+			if (uniformScale == 0)
+				uniformScale = lastUniformScale;
+
+			//Current scale factor
+			double scale = uniformScale/lastUniformScale;
+			var transform = _root.RenderTransform as CompositeTransform;
+			//Apply scaling
+			transform.ScaleY = transform.ScaleX *= scale;
+			//Update the offset caused by this scaling
+			var ul = _root.TransformToVisual(this).TransformPoint(new Point());
+			transform.TranslateX = origin.X - (origin.X - ul.X)*scale;
+			transform.TranslateY = origin.Y - (origin.Y - ul.Y)*scale;
+			lastOrigin = origin;
+			lastUniformScale = uniformScale;
+		}
 	}
 }
