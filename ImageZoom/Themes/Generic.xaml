@@ -9,15 +9,19 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="local:ImageViewer">
-                    <Grid x:Name="Root"
-                          Background="Transparent"
-                          ManipulationMode="Scale,TranslateX,TranslateY">
-                        <Grid x:Name="RootGhost"></Grid>
-                        <Image x:Name="Image"
-                               Source="{TemplateBinding Image}"
-                               Stretch="Uniform"
-                               Width="{TemplateBinding AppWidth}" />
-
+                    <Grid>
+                        <Grid x:Name="Root"
+                              Background="Transparent"
+                              ManipulationMode="Scale,TranslateX,TranslateY">
+                            <Grid x:Name="RootGhost"></Grid>
+                            <Image x:Name="Image"
+                                   Source="{TemplateBinding Image}"
+                                   Stretch="Uniform"
+                                   Width="{TemplateBinding AppWidth}" />
+                        </Grid>
+                        <Grid x:Name="RootCache"
+                              ManipulationMode="System,Scale"
+                              Background="Transparent" />
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

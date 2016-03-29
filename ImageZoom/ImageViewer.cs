@@ -22,6 +22,7 @@ namespace ImageZoom
     public sealed class ImageViewer : Control
     {
         private Grid _root;
+        private Grid _rootCache;
         private Image _imageControl;
 
         public ImageViewer()
@@ -87,6 +88,7 @@ namespace ImageZoom
         protected override void OnApplyTemplate()
         {
             _root = GetTemplateChild("Root") as Grid;
+            _rootCache = GetTemplateChild("RootCache") as Grid;
             _imageControl = GetTemplateChild("Image") as Image;
             if (_root != null)
             {
@@ -95,6 +97,12 @@ namespace ImageZoom
                 _root.ManipulationCompleted += Root_ManipulationCompleted;
                 _root.DoubleTapped += Root_DoubleTapped;
                 _root.RenderTransform = new CompositeTransform();
+
+                _rootCache.ManipulationDelta += Root_ManipulationDelta;
+                _rootCache.ManipulationStarted += Root_ManipulationStarted;
+                _rootCache.ManipulationCompleted += Root_ManipulationCompleted;
+                _rootCache.DoubleTapped += Root_DoubleTapped;
+                _rootCache.RenderTransform = new CompositeTransform();
             }
             base.OnApplyTemplate();
         }
@@ -133,7 +141,16 @@ namespace ImageZoom
             {
                 ResetVertical(transform, imageHeight, imageOffsetPoint);
             }
-            isZoomed = transform.ScaleX >= 1.005;
+            isZoomed = transform.ScaleX >= 1.1;
+            if (isZoomed)
+            {
+                _rootCache.Visibility = Visibility.Collapsed;
+
+            }
+            else
+            {
+                _rootCache.Visibility = Visibility.Visible;
+            }
         }
 
         private void ResetScale()
@@ -203,6 +220,7 @@ namespace ImageZoom
 
         private void Root_ManipulationStarted(object sender, ManipulationStartedRoutedEventArgs e)
         {
+            e.Handled = true;
             lastUniformScale = Math.Sqrt(2);
             lastOrigin = null;
         }
